@@ -1,7 +1,7 @@
-using System;
-using System.Text;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
+using TerraFX.Interop;
 using static TerraFX.Interop.Windows;
 using static TerraFX.Interop.DXGI_FORMAT;
 using static TerraFX.Interop.D3D11_INPUT_CLASSIFICATION;
@@ -13,9 +13,8 @@ using static TerraFX.Interop.D3D_PRIMITIVE_TOPOLOGY;
 using static TerraFX.Interop.D3D11_FILTER;
 using static TerraFX.Interop.D3D11_TEXTURE_ADDRESS_MODE;
 using static TerraFX.Interop.D3D11_COMPARISON_FUNC;
-using TerraFX.Interop;
 
-namespace LibVLCSharp.CustomRendering.Direct3D11
+namespace LibVLCSharp.Direct3D11.TerraFX
 {
     public unsafe class Direct3D11NV12ColorConversionShader: IDisposable
     {
@@ -36,6 +35,49 @@ namespace LibVLCSharp.CustomRendering.Direct3D11
             //nothing yet.
             _d3dctx = null;
             _d3dDevice = null;
+
+            if (samplerState != null)
+            {
+                var count = samplerState->Release();
+                Debug.Assert(count == 0);
+                samplerState = null;
+            }
+           
+            if (pVS != null)
+            {
+                var count = pVS->Release();
+                Debug.Assert(count == 0);
+                pVS = null;
+            }
+
+            if (pPS != null)
+            {
+                var count = pPS->Release();
+                Debug.Assert(count == 0);
+                pPS = null;
+            }
+            if (pShadersInputLayout != null)
+            {
+                var count = pShadersInputLayout->Release();
+                Debug.Assert(count == 0);
+                pShadersInputLayout = null;
+            }
+
+
+            if (pVertexBuffer != null)
+            {
+                var count = pVertexBuffer->Release();
+                Debug.Assert(count == 0);
+                pVertexBuffer = null;
+            }
+
+            if (pIndexBuffer != null)
+            {
+                var count = pIndexBuffer->Release();
+                Debug.Assert(count == 0);
+                pIndexBuffer = null;
+            }
+
         }
 
         
@@ -216,20 +258,21 @@ namespace LibVLCSharp.CustomRendering.Direct3D11
 
             D3D11_MAPPED_SUBRESOURCE ms;
 
-            ID3D11Resource* res;
-            iid = IID_ID3D11Resource;
-
-            Direct3D11Helper.ThrowIfFailed(pVertexBuffer->QueryInterface(&iid, (void**)&res));
-
-            Direct3D11Helper.ThrowIfFailed(_d3dctx->Map(res, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms));
-            for (var i = 0; i < ourVerticles.Length; i++)
+            using (ComPtr<ID3D11Resource> res = null)
             {
-                Marshal.StructureToPtr(ourVerticles[i], (IntPtr)ms.pData + (i * vertexBufferStride), false);
+                iid = IID_ID3D11Resource;
+
+                Direct3D11Helper.ThrowIfFailed(pVertexBuffer->QueryInterface(&iid, (void**)res.GetAddressOf()));
+
+                Direct3D11Helper.ThrowIfFailed(_d3dctx->Map(res, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms));
+                for (var i = 0; i < ourVerticles.Length; i++)
+                {
+                    Marshal.StructureToPtr(ourVerticles[i], (IntPtr)ms.pData + (i * vertexBufferStride), false);
+                }
+
+                //Buffer.MemoryCopy(ms.pData, ourVerticles, verticlesSize, verticlesSize);
+                _d3dctx->Unmap(res, 0);
             }
-
-            //Buffer.MemoryCopy(ms.pData, ourVerticles, verticlesSize, verticlesSize);
-            _d3dctx->Unmap(res, 0);
-
             quadIndexCount = 6;
 
             var bufferDesc = new D3D11_BUFFER_DESC
@@ -242,17 +285,20 @@ namespace LibVLCSharp.CustomRendering.Direct3D11
 
             pIndexBuffer = CreateBuffer(bufferDesc);
 
-            Direct3D11Helper.ThrowIfFailed(pIndexBuffer->QueryInterface(&iid, (void**)&res));
+            using (ComPtr<ID3D11Resource> res = null)
+            {
+                Direct3D11Helper.ThrowIfFailed(pIndexBuffer->QueryInterface(&iid, (void**)res.GetAddressOf()));
 
-            Direct3D11Helper.ThrowIfFailed(_d3dctx->Map(res, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms));
-            Marshal.WriteInt16((IntPtr)ms.pData, 0 * sizeof(ushort), 3);
-            Marshal.WriteInt16((IntPtr)ms.pData, 1 * sizeof(ushort), 1);
-            Marshal.WriteInt16((IntPtr)ms.pData, 2 * sizeof(ushort), 0);
-            Marshal.WriteInt16((IntPtr)ms.pData, 3 * sizeof(ushort), 2);
-            Marshal.WriteInt16((IntPtr)ms.pData, 4 * sizeof(ushort), 1);
-            Marshal.WriteInt16((IntPtr)ms.pData, 5 * sizeof(ushort), 3);
+                Direct3D11Helper.ThrowIfFailed(_d3dctx->Map(res, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms));
+                Marshal.WriteInt16((IntPtr)ms.pData, 0 * sizeof(ushort), 3);
+                Marshal.WriteInt16((IntPtr)ms.pData, 1 * sizeof(ushort), 1);
+                Marshal.WriteInt16((IntPtr)ms.pData, 2 * sizeof(ushort), 0);
+                Marshal.WriteInt16((IntPtr)ms.pData, 3 * sizeof(ushort), 2);
+                Marshal.WriteInt16((IntPtr)ms.pData, 4 * sizeof(ushort), 1);
+                Marshal.WriteInt16((IntPtr)ms.pData, 5 * sizeof(ushort), 3);
 
-            _d3dctx->Unmap(res, 0);
+                _d3dctx->Unmap(res, 0);
+            }
 
             _d3dctx->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             _d3dctx->IASetInputLayout(pShadersInputLayout);

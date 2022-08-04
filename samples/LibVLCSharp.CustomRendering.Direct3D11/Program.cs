@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Text;
 using System.Windows.Forms;
-
+using LibVLCSharp.Direct3D11.TerraFX;
 using static TerraFX.Interop.Windows;
 using TerraFX.Interop;
 using static LibVLCSharp.MediaPlayer;
@@ -19,7 +20,7 @@ namespace LibVLCSharp.CustomRendering.Direct3D11
 
         static RTL_CRITICAL_SECTION sizeLock = new RTL_CRITICAL_SECTION();
 
-        private static Direct3D11Resources _direct3D11Resources;
+        private static IDirect3D11Resources _direct3D11Resources;
 
 
         
@@ -53,9 +54,14 @@ namespace LibVLCSharp.CustomRendering.Direct3D11
         static void Form_FormClosing(object sender, FormClosingEventArgs e)
         {
             mediaplayer?.Stop();
+            
+            //unsubscribe callbacks
+            mediaplayer?.SetOutputCallbacks(VideoEngine.Disable, OutputSetup, OutputCleanup, OutputSetResize, UpdateOutput, Swap, StartRendering, null, null, SelectPlane);
+            
             mediaplayer?.Dispose();
             mediaplayer = null;
 
+            _direct3D11Resources.Dispose();
             libvlc?.Dispose();
             libvlc = null;
 
@@ -81,7 +87,7 @@ namespace LibVLCSharp.CustomRendering.Direct3D11
 
         static void InitializeDirect3D()
         {
-            _direct3D11Resources = new Direct3D11Resources(WIDTH, HEIGHT, form.Handle);
+            _direct3D11Resources = Direct3D11Resources.CreateHwndSwapChain(WIDTH, HEIGHT, form.Handle);
 
 
             fixed (RTL_CRITICAL_SECTION* sl = &sizeLock)
@@ -142,7 +148,7 @@ namespace LibVLCSharp.CustomRendering.Direct3D11
         {
             _direct3D11Resources.CreateResources(config->Width, config->Height);
 
-            output.Union.DxgiFormat = (int)_direct3D11Resources.RenderFormat;
+            output.Union.DxgiFormat = (int)_direct3D11Resources.DxgiRenderFormat;
             output.FullRange = true;
             output.ColorSpace = ColorSpace.BT709;
             output.ColorPrimaries = ColorPrimaries.BT709;
