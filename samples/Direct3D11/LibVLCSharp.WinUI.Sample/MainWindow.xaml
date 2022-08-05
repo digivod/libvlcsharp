@@ -8,6 +8,6 @@
     mc:Ignorable="d">
 
     <Grid>
-        <winUi:VideoView x:Name="VideoView"></winUi:VideoView>
+        <winUi:VideoView x:Name="VideoView"/>
     </Grid>
 </Window>

@@ -4,23 +4,38 @@ using LibVLCSharp.Direct3D11.TerraFX;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using WinRT;
-// ReSharper disable InconsistentlySynchronizedField
 
 namespace LibVLCSharp.WinUI;
 
 /// <summary>
-/// VideoView for WinUI.
-/// With MediaPlayer as dependency property 
+/// VideoView control for WinUI.
+/// MediaPlayer is dependency property
+/// 
+/// Having VideoView directly derive from SwapChainPanel makes it unusable in MAui (as of now, Maui fails
+/// with COM error on control creation). So use UserControl instead 
 /// </summary>
-public unsafe class VideoView : SwapChainPanel, IDisposable
+public sealed unsafe class VideoView : UserControl
 {
+    private readonly SwapChainPanel _swapChainPanel;
+
+    public VideoView()
+    {
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+        SizeChanged += OnSizeChanged;
+
+        _swapChainPanel = new SwapChainPanel();
+        Content = _swapChainPanel;
+    }
+
     /// <summary>
     /// Direct3D11 stuff is encapsulated here
     /// </summary>
     private IDirect3D11Resources _direct3D11Resources;
 
     public static readonly DependencyProperty MediaPlayerProperty = DependencyProperty.Register(
-        nameof(MediaPlayer), typeof(MediaPlayer), typeof(VideoView), new PropertyMetadata(null,MediaPlayerChanged));
+        nameof(MediaPlayer), typeof(MediaPlayer), typeof(VideoView),
+        new PropertyMetadata(null, MediaPlayerChanged));
 
     private static void MediaPlayerChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -28,11 +43,11 @@ public unsafe class VideoView : SwapChainPanel, IDisposable
         {
             ((VideoView)d).DetachMediaPlayer(oldMediaPlayer);
         }
+
         if (e.NewValue is MediaPlayer newMediaPlayer)
         {
             ((VideoView)d).AttachMediaPlayer(newMediaPlayer);
         }
-        
     }
 
     public MediaPlayer MediaPlayer
@@ -41,25 +56,17 @@ public unsafe class VideoView : SwapChainPanel, IDisposable
         set { SetValue(MediaPlayerProperty, value); }
     }
 
-    public VideoView()
-    {
-        Loaded += OnLoaded;
-        Unloaded += OnUnloaded;
-        SizeChanged += OnSizeChanged;
-    }
-
     public void Dispose()
     {
         var t = MediaPlayer;
         if (t != null)
         {
-
             t.Stop();
             MediaPlayer = null; //will also detach via dependency property changed callback
             t.Dispose();
         }
 
-        var swapChainPanelNative = this.As<ISwapChainPanelNative>();
+        var swapChainPanelNative = _swapChainPanel.As<ISwapChainPanelNative>();
 
         var hr = swapChainPanelNative.SetSwapChain(IntPtr.Zero);
         if (hr != 0)
@@ -86,6 +93,7 @@ public unsafe class VideoView : SwapChainPanel, IDisposable
         {
             return;
         }
+
         if (_width == 0 || _height == 0)
             return; // not yet loaded. OnLoaded will call again
 
@@ -93,7 +101,8 @@ public unsafe class VideoView : SwapChainPanel, IDisposable
         SetSwapChainIntoPanel(_direct3D11Resources.SwapChainNativePtr);
         _direct3D11Resources.CreateResources(_width, _height);
 
-        mediaPlayer.SetOutputCallbacks(VideoEngine.D3D11, Setup, Cleanup, SetResize, UpdateOutput, Swap, StartRendering,
+        mediaPlayer.SetOutputCallbacks(VideoEngine.D3D11, Setup, Cleanup, SetResize, UpdateOutput, Swap,
+            StartRendering,
             null, null, SelectPlane);
     }
 
@@ -103,9 +112,8 @@ public unsafe class VideoView : SwapChainPanel, IDisposable
         oldMediaPlayer?.SetOutputCallbacks(VideoEngine.Disable, Setup, Cleanup, SetResize, UpdateOutput, Swap,
             StartRendering,
             null, null, SelectPlane);
-        
     }
-    
+
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
         lock (_sizeLockObject)
@@ -139,7 +147,7 @@ public unsafe class VideoView : SwapChainPanel, IDisposable
 
     private void SetSwapChainIntoPanel(IntPtr swapChainForCompositionNativePtr)
     {
-        var swapChainPanelNative = this.As<ISwapChainPanelNative>();
+        var swapChainPanelNative = _swapChainPanel.As<ISwapChainPanelNative>();
 
         if (swapChainForCompositionNativePtr == IntPtr.Zero)
             throw new InvalidOperationException("no _swapChain1");
